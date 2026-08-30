@@ -1,0 +1,16 @@
+{
+  "name": "Presensia — Aplikasi Absensi Wajah & GPS",
+  "short_name": "Presensia",
+  "description": "Absensi karyawan dengan verifikasi wajah dan validasi radius GPS kantor.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0C1714",
+  "theme_color": "#0C1714",
+  "lang": "id",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
