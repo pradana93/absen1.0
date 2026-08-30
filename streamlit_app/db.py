@@ -10,9 +10,24 @@ Catatan produksi:
 import hashlib
 import os
 import sqlite3
+import tempfile
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presensia.db")
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _db_path() -> str:
+    """
+    Pilih lokasi file SQLite: di samping aplikasi bila direktori bisa ditulis,
+    jika tidak (mis. checkout Streamlit Cloud read-only) pindah ke temp dir.
+    """
+    preferred = os.path.join(_APP_DIR, "presensia.db")
+    if os.path.exists(preferred) or os.access(_APP_DIR, os.W_OK):
+        return preferred
+    return os.path.join(tempfile.gettempdir(), "presensia.db")
+
+
+DB_PATH = _db_path()
 
 # Titik kantor default: Monumen Nasional, Jakarta (ubah via panel admin)
 DEFAULT_OFFICE = {

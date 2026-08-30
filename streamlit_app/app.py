@@ -142,7 +142,7 @@ def placeholder_photo(name: str) -> bytes:
 
 
 # ----------------------------------------------------------------------
-#  GPS: mode demo → titik kantor; jika tidak, widget geolite; fallback manual
+#  GPS: mode demo → titik kantor; jika tidak, widget GPS bawaan; fallback manual
 # ----------------------------------------------------------------------
 def gps_section(office):
     """Kembalikan koordinat saat ini: {'lat','lng','accuracy'}."""
@@ -150,26 +150,25 @@ def gps_section(office):
         st.caption("Mode GPS Demo aktif — posisi dianggap tepat di titik kantor.")
         return {"lat": office["lat"], "lng": office["lng"], "accuracy": 0.0}
 
+    # Widget GPS bawaan (gps_widget/) — protokol komponen Streamlit murni,
+    # tanpa dependensi pihak ketiga.
+    from gps_widget import st_geolocate
+
+    loc = st_geolocate(key="gps_browser")
     coords = None
-    try:
-        from st_geolite import st_geolocate  # widget GPS browser (leaflet)
-
-        loc = st_geolocate(key="geolite_gps")
-        if isinstance(loc, dict) and loc.get("coords"):
-            c = loc["coords"]
-            if c.get("latitude") is not None and c.get("longitude") is not None:
-                coords = {"lat": float(c["latitude"]), "lng": float(c["longitude"]),
-                          "accuracy": float(c.get("accuracy") or 0)}
-    except Exception:
-        st.info("Widget `st-geolite` tidak tersedia di lingkungan ini — gunakan input manual di bawah.")
-
-    lat = lng = None
-    with st.expander("Koordinat manual (fallback / pengujian)"):
-        c1, c2 = st.columns(2)
-        lat = c1.number_input("Latitude", value=float(office["lat"]), format="%.6f", key="man_lat")
-        lng = c2.number_input("Longitude", value=float(office["lng"]), format="%.6f", key="man_lng")
+    if isinstance(loc, dict):
+        if loc.get("ok"):
+            coords = {"lat": float(loc["lat"]), "lng": float(loc["lng"]),
+                      "accuracy": float(loc.get("accuracy") or 0)}
+        elif loc.get("error"):
+            st.caption(f"GPS: {loc['error']}")
 
     if coords is None:
+        st.caption("Posisi GPS belum terkunci — menunggu, atau gunakan koordinat manual di bawah.")
+        with st.expander("Koordinat manual (fallback / pengujian)"):
+            c1, c2 = st.columns(2)
+            lat = c1.number_input("Latitude", value=float(office["lat"]), format="%.6f", key="man_lat")
+            lng = c2.number_input("Longitude", value=float(office["lng"]), format="%.6f", key="man_lng")
         coords = {"lat": float(lat), "lng": float(lng), "accuracy": 0.0}
     return coords
 

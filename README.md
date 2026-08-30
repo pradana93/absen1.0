@@ -86,7 +86,7 @@ Setiap langkah ditampilkan sebagai *status checklist* di UI, diakhiri stempel **
 | Database | SQLite file | PostgreSQL (skema sama) |
 | Foto | BLOB di DB | Unggah ke **AWS S3** (`boto3`), simpan URL |
 | PIN | PBKDF2 | `bcrypt` / `argon2` |
-| GPS | geolite / manual / demo | `st-geolite` + validasi akurasi (tolak `accuracy > 50 m`), pertimbangkan anti-spoofing (mock-location check) |
+| GPS | komponen bawaan `gps_widget/` (protokol komponen Streamlit, tanpa dependensi) / manual / demo | Validasi akurasi (tolak `accuracy > 50 m`), pertimbangkan anti-spoofing (mock-location check) |
 | Wajah | SFace ambang 0.363 | Tambah *liveness* (kedip/gerak) agar foto statis tak bisa dipakai |
 | Deploy | `streamlit run` | Streamlit Community Cloud / Docker + reverse proxy HTTPS |
 

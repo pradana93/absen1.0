@@ -1,6 +1,12 @@
+# ============================
+#  PRESSENSIA — dependensi inti
+# ============================
 streamlit>=1.37
 opencv-python>=4.9
 numpy
 pandas
 Pillow
-st-geolite
+
+# Catatan: GPS perangkat diakses lewat komponen bawaan (gps_widget/)
+# yang mengimplementasikan protokol komponen Streamlit secara langsung —
+# TIDAK ADA dependensi pihak ketiga tambahan (st-geolite sudah dihapus).

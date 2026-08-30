@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 10px 12px;
+      background: #0F1B16; border: 1px solid rgba(255,255,255,.08);
+      border-radius: 10px;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #F5B84B; flex: none;
+      animation: blink 1.2s ease-in-out infinite;
+    }
+    .dot.ok  { background: #4BD489; animation: none; }
+    .dot.err { background: #F87060; animation: none; }
+    @keyframes blink { 50% { opacity: .35; } }
+    .status { font-size: 13px; color: #F2EDDD; flex: 1; line-height: 1.35; }
+    button {
+      background: #F5B84B; color: #0C1714; border: 0; border-radius: 8px;
+      padding: 7px 13px; font-size: 12px; font-weight: 800; cursor: pointer;
+      flex: none; letter-spacing: .02em;
+    }
+    button:hover { background: #ffcf6b; }
+    button:active { transform: translateY(1px); }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <span class="dot" id="dot"></span>
+    <span class="status" id="status">Menyiapkan GPS…</span>
+    <button id="refresh" type="button">Perbarui</button>
+  </div>
+
+  <script>
+    /* ============================================================
+       Protokol komponen Streamlit — implementasi manual (vanilla JS)
+       tanpa pustaka eksternal:
+         keluar  : streamlit:componentReady / setFrameHeight / setComponentValue
+         masuk   : streamlit:render
+       ============================================================ */
+    var statusEl = document.getElementById("status");
+    var dotEl = document.getElementById("dot");
+    var btnEl = document.getElementById("refresh");
+    var sentOnce = false;
+
+    function post(type, extra) {
+      var msg = { isStreamlitMessage: true, type: "streamlit:" + type };
+      for (var k in extra) msg[k] = extra[k];
+      window.parent.postMessage(msg, "*");
+    }
+
+    function send(value) {
+      post("setComponentValue", { value: value, dataType: "json" });
+    }
+
+    function setStatus(text, tone) {
+      statusEl.textContent = text;
+      dotEl.className = "dot " + (tone || "busy");
+    }
+
+    function locate() {
+      if (!("geolocation" in navigator)) {
+        setStatus("Browser ini tidak mendukung geolocation.", "err");
+        send({ ok: false, error: "geolocation tidak didukung browser" });
+        return;
+      }
+      setStatus("Mencari posisi GPS… (izinkan akses lokasi bila diminta)", "busy");
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          setStatus(
+            "Posisi terkunci · akurasi ±" + Math.round(pos.coords.accuracy) + " m",
+            "ok"
+          );
+          send({
+            ok: true,
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          });
+        },
+        function (err) {
+          var msg =
+            err.code === 1
+              ? "Izin lokasi ditolak — aktifkan izin lokasi di browser, lalu tekan Perbarui."
+              : "Gagal mengambil lokasi (" + (err.message || "timeout") + "). Coba lagi.";
+          setStatus(msg, "err");
+          send({ ok: false, error: msg });
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 }
+      );
+    }
+
+    btnEl.addEventListener("click", function () {
+      sentOnce = false;
+      locate();
+    });
+
+    window.addEventListener("message", function (event) {
+      if (event.data && event.data.type === "streamlit:render") {
+        post("setFrameHeight", { height: 56 });
+        // Hanya ambil posisi sekali per sesi komponen; setelah itu
+        // nilai bertahan dan pembaruan lewat tombol "Perbarui".
+        if (!sentOnce) {
+          sentOnce = true;
+          locate();
+        }
+      }
+    });
+
+    post("componentReady", { apiVersion: 1 });
+  </script>
+</body>
+</html>
