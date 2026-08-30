@@ -1,110 +1,115 @@
-# Presensia — Aplikasi Absensi (Face Recognition + GPS Radius)
+# Presensia — Aplikasi Absensi (Verifikasi Wajah + Radius GPS)
 
-Aplikasi absensi mobile-web (PWA-ready) berbahasa Indonesia: registrasi dengan **foto tanda tangan wajah**, absen masuk/pulang dengan **verifikasi wajah** (face-api.js) dan **validasi radius GPS kantor**, plus **dasbor admin** untuk log & pengaturan.
+Aplikasi absensi karyawan berbasis **Python Streamlit** dengan:
 
-## Struktur Proyek
+- **Registrasi + foto tanda tangan** — foto pertama user diekstrak menjadi *face descriptor* (embedding 128-dim) dan disimpan sebagai referensi biometrik.
+- **Absen masuk/pulang** — foto baru dicocokkan dengan foto tanda tangan; tidak cocok → ditolak.
+- **Validasi radius GPS** — koordinat perangkat dicek terhadap titik kantor + radius (admin) dengan rumus Haversine. Dicek di UI dan **divalidasi ulang di server**.
+- **Log absensi** — user, timestamp, tipe, koordinat, jarak, skor kemiripan wajah, dan foto bukti.
+- **Dashboard admin** — statistik, filter tanggal/karyawan/tipe, konfigurasi titik & radius kantor, daftar pengguna.
 
-```
-├── index.html                  # shell PWA (font, manifest, meta)
-├── public/
-│   ├── icon.svg                # ikon aplikasi
-│   ├── manifest.webmanifest    # PWA manifest
-│   └── sw.js                   # service worker (offline shell)
-├── src/                        # FRONTEND React + TypeScript + Tailwind v4
-│   ├── lib/
-│   │   ├── types.ts            # kontrak data bersama (frontend ↔ backend)
-│   │   ├── api.ts              # "backend" simulasi (localStorage + validasi server-side)
-│   │   ├── face.ts             # face-api.js: load model, deteksi, descriptor 128-dim
-│   │   ├── geo.ts              # Geolocation API + Haversine + cek radius
-│   │   └── utils.ts            # format waktu id-ID, Euclidean, hash demo
-│   ├── state/AppContext.tsx    # sesi, kantor, status model, toast
-│   ├── components/             # CameraCapture, UI kit, ikon SVG inline
-│   └── screens/                # Auth, Home, History, Admin
-└── server/                     # BACKEND referensi: Node.js + Express + MongoDB
-    ├── package.json
-    ├── .env.example
-    └── src/
-        ├── index.js            # semua endpoint + verifikasi otoritatif
-        ├── models.js           # skema Mongoose
-        └── middleware/auth.js  # JWT
-```
+> **Catatan lingkungan:** repositori ini juga menyertakan *web demo* (React + Vite) di root — itulah yang disajikan oleh pratinjau statis sandbox ini, karena Streamlit membutuhkan server Python yang berjalan. Kedua versi berbagi logika bisnis, alur, dan akun demo yang sama.
 
-## Jalankan Demo (frontend saja — tanpa server)
+---
+
+## 1. Menjalankan versi Streamlit (Python)
+
+### Prasyarat
+- Python 3.10+ dan pip
+- Webcam / kamera ponsel (atau gunakan **Mode Simulasi** jika tidak ada)
+- Koneksi internet saat pertama kali menjalankan (unduh model ONNX ±38 MB, sekali saja)
+
+### Langkah
 
 ```bash
-npm install
-npm run dev          # http://localhost:5173
-npm run build        # hasil build statis di dist/
+cd streamlit_app
+
+# (opsional, disarankan) virtual environment
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
-Frontend berjalan mandiri memakai **API simulasi di browser** (`src/lib/api.ts`) dengan localStorage sebagai database — kontraknya identik dengan backend Express, jadi berpindah ke server nyata hanya mengganti isi file itu dengan `fetch()`.
+Buka `http://localhost:8501`. Model wajah (YuNet + SFace, format ONNX) diunduh otomatis ke `streamlit_app/models/` pada penggunaan fitur wajah pertama kali.
 
-**Akun demo (diseed otomatis):**
+### Akun demo (sudah di-seed)
 
 | Peran     | NIP       | PIN    |
 |-----------|-----------|--------|
-| Admin     | `ADMIN01` | `123456` |
-| Karyawan  | `EMP-1001`| `111111` (punya riwayat, tanpa foto tanda tangan) |
+| Admin     | `ADMIN01` | 123456 |
+| Karyawan  | `EMP-1001`| 111111 |
 
-Daftarkan akun baru lewat tab **Daftar** — foto tanda tangan diambil dari kamera.
-Jika lingkungan memblokir kamera/GPS (mis. iframe pratinjau), tersedia **Mode Simulasi**
-(descriptor sintetis konsisten per NIP) dan **Mode Demo GPS** (toggle di Dasbor Admin)
-agar seluruh alur tetap bisa dicoba. Semua record simulasi diberi penanda `SIM`.
+Konfigurasi default: kantor di Monas, Jakarta (`-6.175392, 106.827153`), radius **150 m**, **Mode GPS Demo aktif** (posisi dianggap di kantor — matikan di *Pengaturan* admin untuk memaksa GPS asli perangkat).
 
-## Jalankan Backend Nyata (Express + MongoDB)
+---
+
+## 2. Arsitektur
+
+```
+streamlit_app/
+├── app.py            # UI + router + alur verifikasi (Streamlit)
+├── db.py             # SQLite: users, attendance, office; hashing PIN (PBKDF2)
+├── face_utils.py     # OpenCV: YuNet (deteksi) + SFace (descriptor & matching)
+├── geo.py            # Haversine + pengecekan radius + descriptor simulasi
+├── icon.svg
+├── requirements.txt
+├── .streamlit/config.toml   # tema gelap pine/amber
+└── models/           # (dibuat otomatis) YuNet + SFace ONNX
+```
+
+### Kenapa OpenCV (bukan face-api.js)?
+Aplikasi Streamlit menjalankan seluruh logika **di server Python**. OpenCV menyediakan deteksi wajah (YuNet) dan pengenalan wajah (SFace) sebagai model ONNX native — tanpa TensorFlow, tanpa kompilasi dlib, `pip install opencv-python` langsung jalan di semua OS. Descriptor 128-dim disimpan di database; pencocokan memakai **cosine similarity** dengan ambang resmi OpenCV **0.363**.
+
+### Kenapa tidak ada JWT?
+Streamlit adalah aplikasi *stateful* per sesi browser — `st.session_state` adalah padanan session-cookie pada app monolitik (server dan UI satu proses). Jika kelak UI dan API dipisah, terapkan JWT seperti pola umum REST.
+
+### Alur verifikasi absensi (`perform_attendance` di `app.py`)
+1. **Wajah** — analisis foto → harus *tepat satu* wajah → descriptor → cosine similarity vs. foto tanda tangan (gagal → `DITOLAK: Wajah tidak cocok`).
+2. **Radius GPS** — Haversine ke titik kantor vs. radius admin (gagal → `DITOLAK: Di luar area kantor`). Pengecekan ini terjadi **di server**, bukan sekadar di UI.
+3. **Urutan** — masuk ↔ pulang harus bergantian.
+4. **Simpan log** — termasuk koordinat, jarak, skor kemiripan, dan foto bukti.
+
+Setiap langkah ditampilkan sebagai *status checklist* di UI, diakhiri stempel **HADIR** / **DITOLAK**.
+
+### Penyimpanan
+- SQLite (file `presensia.db`) — users, attendance, office. Foto & descriptor sebagai BLOB.
+- PIN di-hash **PBKDF2-HMAC-SHA256, 200.000 iterasi** + salt acak.
+
+---
+
+## 3. Catatan produksi
+
+| Aspek | Demo | Produksi |
+|---|---|---|
+| Database | SQLite file | PostgreSQL (skema sama) |
+| Foto | BLOB di DB | Unggah ke **AWS S3** (`boto3`), simpan URL |
+| PIN | PBKDF2 | `bcrypt` / `argon2` |
+| GPS | geolite / manual / demo | `st-geolite` + validasi akurasi (tolak `accuracy > 50 m`), pertimbangkan anti-spoofing (mock-location check) |
+| Wajah | SFace ambang 0.363 | Tambah *liveness* (kedip/gerak) agar foto statis tak bisa dipakai |
+| Deploy | `streamlit run` | Streamlit Community Cloud / Docker + reverse proxy HTTPS |
+
+### Mengganti penyimpanan foto ke S3 (sketsa)
+```python
+import boto3
+s3 = boto3.client("s3")
+s3.upload_fileobj(io.BytesIO(photo_bytes), "presensia-photos", key)
+# simpan f"https://…/{key}" di kolom photo, bukan BLOB
+```
+
+---
+
+## 4. Web demo (pratinjau statis sandbox)
+
+Versi React + Vite + Tailwind di root mereplikasi fitur yang sama di browser
+(face-api.js/TinyFace + SFace-style descriptor di klien, radius dicek ulang "server-side"
+oleh lapisan API simulasi). Menjalankan lokal:
 
 ```bash
-cd server
 npm install
-cp .env.example .env      # isi MONGODB_URI & JWT_SECRET
-npm run dev               # http://localhost:4000
+npm run dev      # http://localhost:5173
 ```
 
-Endpoint (sama persis dengan simulasi):
-
-| Method | Path                  | Keterangan |
-|--------|-----------------------|------------|
-| POST   | `/api/auth/register`  | daftar + simpan foto & descriptor |
-| POST   | `/api/auth/login`     | login → JWT |
-| GET    | `/api/office`         | ambil titik & radius kantor |
-| PUT    | `/api/office`         | atur titik/radius (admin) |
-| POST   | `/api/attendance`     | check-in/out — **verifikasi ulang wajah + radius** |
-| GET    | `/api/attendance/me`  | riwayat sendiri |
-| GET    | `/api/attendance`     | log semua + filter `date`, `userId`, `type` (admin) |
-| GET    | `/api/users`          | daftar karyawan (admin) |
-
-## Kenapa Pengenalan Wajah di Frontend?
-
-Model TensorFlow.js (SSD-MobileNet / TinyFace + FaceRecognitionNet) dirancang berjalan
-**di browser** — menjalankannya di Node murni butuh native binding yang berat dan rapuh.
-Maka arsitekturnya:
-
-1. **Klien** mengekstrak descriptor 128 angka dari foto (sekali saat registrasi, sekali tiap absen).
-2. **Server menyimpan descriptor** (bukan logika AI) dan **menghitung ulang jarak Euclidean**
-   setiap absensi (`server/src/index.js`) — hasil "cocok" dari klien tidak pernah dipercaya.
-3. **Radius GPS juga diverifikasi ulang di server** dengan Haversine — cek di klien hanya
-   untuk umpan balik instan.
-
-Ambang jarak Euclidean: `0.5` (face-api default ≈ 0.6; diperketat untuk absensi).
-Model yang dimuat: TinyFaceDetector + FaceLandmark68Tiny + FaceRecognitionNet (±6 MB,
-dari CDN, di-cache browser). Ganti ke SSD-MobileNet v1 bila perangkat memadai.
-
-## Keamanan & Catatan Produksi
-
-- **PIN**: demo memakai hash sederhana di localStorage; backend nyata memakai **bcrypt** (`bcryptjs`).
-- **JWT**: demo menandatangani sendiri di browser; backend memakai `jsonwebtoken` + `JWT_SECRET`.
-- **Foto**: demo menyimpan base64 di localStorage/Mongo. Produksi: unggah ke **AWS S3**
-  (lihat komentar di `POST /api/attendance` & `.env.example`), simpan URL-nya saja.
-- **Model AI**: untuk offline total, unduh weights ke `public/models/` dan ganti
-  `MODEL_BASES` di `src/lib/face.ts` ke path lokal.
-- **HTTPS wajib** untuk `getUserMedia` & Geolocation di perangkat nyata.
-- Mode Simulasi/Demo GPS hanyalah alat uji — matikan `demoGps` untuk pemakaian sungguhan.
-
-## Alur Verifikasi (setiap absen)
-
-```
-Foto kamera → deteksi 1 wajah → descriptor 128-dim
-   ├─ pra-cek klien: Euclidean ≤ 0.5 & Haversine ≤ radius
-   └─ server: hitung ulang keduanya + urutan masuk↔pulang (anti-duplikat)
-Hasil: stempel HADIR / DITOLAK + alasan + metrik (Δ wajah, jarak, akurasi GPS)
-```
+Struktur utama: `src/lib/api.ts` (kontrak API + aturan bisnis), `src/lib/face.ts`
+(model wajah), `src/lib/geo.ts` (GPS + radius), `src/screens/*` (UI).
