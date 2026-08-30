@@ -2,7 +2,7 @@
 #  PRESSENSIA — dependensi inti
 # ============================
 streamlit>=1.37
-opencv-python>=4.9
+opencv-python-headless
 numpy
 pandas
 Pillow
